@@ -1,16 +1,17 @@
 #include <array>
+#include <vector>
 #include <iostream>
 #include <unordered_map>
 
-static constexpr int ROWS = 2;
-static constexpr int COLUMNS = 3;
-static constexpr int GAME_SIZE = 2;
+static constexpr int ROWS = 4;
+static constexpr int COLUMNS = 6;
+static constexpr int GAME_SIZE = 4;
 
 enum class Cell : char
 {
-    Empty,
-    Red,
-    Blue
+    Empty = 0,
+    Red   = 1,
+    Blue  = 2
 };
 
 std::ostream& operator<<(std::ostream& os, const Cell& c)
@@ -21,7 +22,7 @@ std::ostream& operator<<(std::ostream& os, const Cell& c)
     case Cell::Red:   os << "Red";   break;
     case Cell::Blue:  os << "Blue";  break;
     }
-    
+
     return os;
 }
 
@@ -37,9 +38,9 @@ void init()
             cell = Cell::Empty;
 }
 
-void printTable()
+void printTable(const Table& t)
 {
-    for (auto& column : table)
+    for (auto& column : t)
     {
         for (auto& cell: column)
             std::cout << cell << ' ';
@@ -48,21 +49,21 @@ void printTable()
     std::cout <<  std::endl;
 }
 
-static int moves = 0;
+static int depth = 0;
 
 int makeMove(int col, Cell tok)
 {
     auto & column = table[col];
     auto it = column.begin();
-    
+
     while (it != column.end() && *it != Cell::Empty)
         ++it;
-        
+
     if (it == column.end())
         return -1;
     else
     {
-        moves += 1;
+        depth += 1;
         *it = tok;
         return std::distance(column.begin(), it);
     }
@@ -72,11 +73,11 @@ void revertMove(int col)
 {
     auto & column = table[col];
     auto it = column.begin();
-    
+
     while (it != column.end() && *it != Cell::Empty)
         ++it;
 
-    moves -= 1;
+    depth -= 1;
     *(--it) = Cell::Empty;
 }
 
@@ -133,45 +134,102 @@ Cell otherPlayer(Cell tok)
         return Cell::Red;
 }
 
+std::uint64_t hashTable(const Table& table)
+{
+  int hash1 = 0;
+  for (int c = 0; c < COLUMNS; ++c)
+  {
+    for (int r = 0; r < ROWS; ++r)
+    {
+      hash1 *= 3;
+      hash1 += (int)table[c][r];
+    }
+  }
+
+  return hash1;
+}
+
+std::unordered_map<std::uint64_t, std::pair<Table, Cell>> solved;
+
+static int iter = 0;
 
 Cell exploreTree(Cell tok)
 {
-    std::array<Cellm,
     int nomove = 0;
+
+    std::vector<Cell> rets;
+    rets.reserve(COLUMNS);
+
     for (int c = 0; c < COLUMNS; ++c)
     {
+        iter++;
+        //std::cout << tok << " " << c << " " <<  iter << std::endl;
         auto r = makeMove(c, tok);
+        auto h = hashTable(table);
+
         if (r < 0)
         {
             nomove += 1;
             continue;
         }
+
+        auto it = solved.find(h);
+        if (it != solved.end())
+        {
+          if (it->second.first == table)
+          {
+            revertMove(c);
+            return it->second.second;
+          }
+          // else
+          // {
+          //   std::cout << "hash clash " << h << "\n";
+          //   printTable(table);
+          //   std::cout << "other: \n";
+          //   printTable(it->second.first);
+          // }
+        }
+
         if (victory(tok, r, c))
         {
+            solved[h] = std::make_pair(table, tok);
+            // std::cout << "winner " << tok
+            //           << " r:" << r
+            //           << " c:" << c << std::endl;
+            // printTable(table);
+            // std::cout << "==================\n";
             revertMove(c);
             return tok;
         }
         else
         {
             auto r = exploreTree(otherPlayer(tok));
-            if (r == tok)
+            solved[h] = std::make_pair(table, r);
+            if (depth == 1)
             {
-                std::cout << tok << " shortcut" << std::endl;
-                revertMove(c);
-                return r;
+              std::cout << tok << " " << c << " " << r << std::endl;
             }
+            revertMove(c);
+            if (r == tok) return tok;
+            else rets.push_back(r);
         }
-        revertMove(c);
     }
-    if (nomove == 0)
+
+    if (nomove == COLUMNS)
         return Cell::Empty;
+
+    for (auto r : rets)
+      if (r == Cell::Empty) return Cell::Empty;
+
+    return otherPlayer(tok);
 }
 
 int main(int argc, char *argv[])
 {
     init();
-    
-    std::cout << exploreTree(Cell::Red) << std::endl;
-    
+    auto winner = exploreTree(Cell::Red);
+    std::cout << "Done " <<  winner
+              <<  " after " << iter << " moves" <<  std::endl;
+
     return 0;
 }
